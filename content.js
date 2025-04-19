@@ -1,114 +1,208 @@
-let copyButton = null
+/**
+ * QuickCopy - 轻量级文本选择复制工具
+ */
+;(function () {
+  // 统一配置管理
+  const CONFIG = {
+    buttonId: 'quick-copy-button',
+    transitionDuration: 1000, // 状态消息显示时长(毫秒)
+    scrollDebounce: 100, // 滚动防抖时间(毫秒)
+    offset: { x: 10, y: 15 }, // 按钮相对鼠标的偏移
+    labels: {
+      copy: '复制',
+      copied: '已复制',
+      error: '失败',
+    },
+  }
 
-// 创建或获取悬浮复制按钮
-function getOrCreateCopyButton() {
-  if (!copyButton) {
-    copyButton = document.createElement('div')
-    copyButton.id = 'quick-copy-button'
-    copyButton.textContent = '复制'
-    copyButton.style.display = 'none'
-    document.body.appendChild(copyButton)
+  class QuickCopyButton {
+    constructor() {
+      this.button = null
 
-    // 添加点击事件 (只添加一次)
-    copyButton.onclick = e => {
-      e.stopPropagation() // 防止事件冒泡
+      // 预绑定事件处理函数，便于后续移除
+      this.boundHandleMouseUp = this.handleMouseUp.bind(this)
+      this.boundHandleMouseDown = this.handleMouseDown.bind(this)
+      this.boundHandleClick = this.handleClick.bind(this)
+      this.debouncedHide = this.debounce(this.hide.bind(this), CONFIG.scrollDebounce)
+
+      this.init()
+    }
+
+    /**
+     * 初始化复制按钮和事件监听
+     */
+    init() {
+      this.createButton()
+      this.setupEventListeners()
+    }
+
+    /**
+     * 创建复制按钮元素
+     */
+    createButton() {
+      this.button = document.createElement('div')
+      this.button.id = CONFIG.buttonId
+      this.button.textContent = CONFIG.labels.copy
+      this.button.style.display = 'none'
+      document.body.appendChild(this.button)
+      this.button.addEventListener('click', this.boundHandleClick)
+    }
+
+    /**
+     * 处理按钮点击事件
+     */
+    handleClick(e) {
+      e.stopPropagation()
       const selectedText = window.getSelection().toString().trim()
-      if (!selectedText) return // 以防万一在点击时选择消失
+      if (!selectedText) return
 
+      this.copyToClipboard(selectedText)
+    }
+
+    /**
+     * 复制文本到剪贴板
+     */
+    copyToClipboard(text) {
       navigator.clipboard
-        .writeText(selectedText)
+        .writeText(text)
         .then(() => {
-          // 复制成功效果
-          copyButton.textContent = '已复制'
-          copyButton.classList.add('copied')
-          setTimeout(() => {
-            copyButton.textContent = '复制'
-            copyButton.classList.remove('copied')
-            hideCopyButton()
-          }, 1000)
+          this.updateButtonState(true)
         })
         .catch(err => {
           console.error('复制失败:', err)
-          copyButton.textContent = '失败'
-          setTimeout(() => {
-            copyButton.textContent = '复制'
-            hideCopyButton()
-          }, 1000)
+          this.updateButtonState(false)
         })
     }
-  }
-  return copyButton
-}
 
-// 隐藏复制按钮
-function hideCopyButton() {
-  const btn = getOrCreateCopyButton()
-  if (btn) {
-    btn.style.display = 'none'
-  }
-}
+    /**
+     * 更新按钮状态
+     */
+    updateButtonState(success) {
+      if (success) {
+        this.button.textContent = CONFIG.labels.copied
+        this.button.classList.add('copied')
+      } else {
+        this.button.textContent = CONFIG.labels.error
+        this.button.classList.add('error')
+      }
 
-// 防抖函数
-function debounce(func, wait) {
-  let timeout
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout)
-      func.apply(this, args)
+      setTimeout(() => {
+        this.button.textContent = CONFIG.labels.copy
+        this.button.classList.remove('copied', 'error')
+        this.hide()
+      }, CONFIG.transitionDuration)
     }
-    clearTimeout(timeout)
-    timeout = setTimeout(later, wait)
-  }
-}
 
-// 显示复制按钮
-function showCopyButton(selection) {
-  const selectedText = selection.toString().trim()
-  if (!selectedText) {
-    hideCopyButton()
-    return
-  }
+    /**
+     * 在鼠标位置显示按钮
+     */
+    show(selection, event) {
+      const selectedText = selection.toString().trim()
+      if (!selectedText) {
+        this.hide()
+        return
+      }
 
-  const btn = getOrCreateCopyButton()
+      // 计算位置并考虑偏移量
+      let buttonTop = event.pageY + CONFIG.offset.y
+      let buttonLeft = event.pageX + CONFIG.offset.x
 
-  // 获取选中文本的位置信息
-  const range = selection.getRangeAt(0)
-  const rect = range.getBoundingClientRect()
+      // 边界检查，防止按钮超出视窗
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      const buttonWidth = this.button.offsetWidth || 50 // 首次获取可能为0，提供默认值
+      const buttonHeight = this.button.offsetHeight || 30
 
-  // 计算按钮位置（考虑页面滚动）
-  const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-  const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft
+      // 防止超出右侧边界
+      if (buttonLeft + buttonWidth > viewportWidth + window.scrollX) {
+        buttonLeft = viewportWidth + window.scrollX - buttonWidth - 10
+      }
 
-  btn.style.top = `${rect.bottom + scrollTop + 10}px`
-  btn.style.left = `${rect.left + scrollLeft + rect.width / 2 - btn.offsetWidth / 2}px` // 居中优化
-  btn.style.display = 'block'
-  // 点击事件已在 getOrCreateCopyButton 中统一处理
-}
+      // 防止超出底部边界
+      if (buttonTop + buttonHeight > viewportHeight + window.scrollY) {
+        buttonTop = event.pageY - buttonHeight - 10 // 改为显示在鼠标上方
+      }
 
-// 监听选择文本事件
-document.addEventListener('mouseup', () => {
-  setTimeout(() => {
-    const selection = window.getSelection()
-    if (selection.toString().trim()) {
-      showCopyButton(selection)
-    } else {
-      hideCopyButton()
+      this.button.style.top = `${buttonTop}px`
+      this.button.style.left = `${buttonLeft}px`
+      this.button.style.display = 'block'
     }
-  }, 10) // 短暂延迟确保选择完成
-})
 
-// 点击其他区域时隐藏按钮
-document.addEventListener('mousedown', event => {
-  const btn = getOrCreateCopyButton()
-  // 如果点击事件的目标不是按钮本身，则隐藏按钮
-  if (btn && event.target !== btn) {
-    hideCopyButton()
+    /**
+     * 隐藏按钮
+     */
+    hide() {
+      if (this.button) {
+        this.button.style.display = 'none'
+      }
+    }
+
+    /**
+     * 设置所有事件监听器
+     */
+    setupEventListeners() {
+      document.addEventListener('mouseup', this.boundHandleMouseUp)
+      document.addEventListener('mousedown', this.boundHandleMouseDown)
+      window.addEventListener('scroll', this.debouncedHide)
+      window.addEventListener('resize', this.debouncedHide)
+    }
+
+    /**
+     * 处理鼠标抬起事件
+     */
+    handleMouseUp(event) {
+      if (event.target === this.button) return
+
+      setTimeout(() => {
+        const selection = window.getSelection()
+        if (selection.toString().trim()) {
+          this.show(selection, event)
+        } else {
+          this.hide()
+        }
+      }, 10) // 短暂延迟确保选择完成
+    }
+
+    /**
+     * 处理鼠标按下事件
+     */
+    handleMouseDown(event) {
+      if (event.target !== this.button) {
+        this.hide()
+      }
+    }
+
+    /**
+     * 防抖函数
+     */
+    debounce(func, wait) {
+      let timeout
+      return function (...args) {
+        clearTimeout(timeout)
+        timeout = setTimeout(() => func.apply(this, args), wait)
+      }
+    }
+
+    /**
+     * 清理资源方法
+     */
+    destroy() {
+      // 移除所有事件监听
+      document.removeEventListener('mouseup', this.boundHandleMouseUp)
+      document.removeEventListener('mousedown', this.boundHandleMouseDown)
+      window.removeEventListener('scroll', this.debouncedHide)
+      window.removeEventListener('resize', this.debouncedHide)
+
+      if (this.button) {
+        this.button.removeEventListener('click', this.boundHandleClick)
+        if (this.button.parentNode) {
+          this.button.parentNode.removeChild(this.button)
+        }
+        this.button = null
+      }
+    }
   }
-})
 
-// 页面滚动时隐藏按钮 (添加 debounce 优化)
-const debouncedHide = debounce(hideCopyButton, 100) // 100ms 防抖
-window.addEventListener('scroll', debouncedHide)
-
-// 初始化时确保按钮存在（但不显示）
-getOrCreateCopyButton()
+  // 初始化并暴露实例到全局作用域（如有需要）
+  window.quickCopy = new QuickCopyButton()
+})()
