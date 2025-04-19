@@ -1,0 +1,27 @@
+#quick-copy-button {
+  position: absolute;
+  background-color: #4a90e2;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: 'Microsoft YaHei', sans-serif;
+  z-index: 2147483647; /* 最高层级 */
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  user-select: none;
+  transition: all 0.3s ease;
+  text-align: center;
+  min-width: 50px;
+  border: none;
+  outline: none;
+}
+
+#quick-copy-button:hover {
+  background-color: #357abd;
+  transform: scale(1.05);
+}
+
+#quick-copy-button.copied {
+  background-color: #4CAF50;
+}
